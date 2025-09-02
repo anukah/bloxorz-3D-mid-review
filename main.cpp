@@ -264,17 +264,15 @@ void drawBlock() {
             break;
     }
     
-    // +++ ADD THESE LINES +++
-    drawCube(); // Draw the solid (glass-like) block first
+    drawCube();
     
-    // Now draw the black borders
-    glDisable(GL_LIGHTING); // Disable lighting to get a pure color
-    glColor3f(0.0f, 0.0f, 0.0f); // Set color to black
-    drawCubeBorders(); // Draw the wireframe cube (border)
-    glEnable(GL_LIGHTING);  // Re-enable lighting for subsequent objects
-    // +++ END OF ADDED LINES +++
+    // black borders
+    glDisable(GL_LIGHTING); // Disable lighting
+    glColor3f(0.0f, 0.0f, 0.0f); // black
+    drawCubeBorders();
+    glEnable(GL_LIGHTING);  // Re-enable lighting
 
-    glPopMatrix(); // Pop the block's orientation scaling
+    glPopMatrix();
     
-    glPopMatrix(); // Pop the block's position translation
+    glPopMatrix();
 }
