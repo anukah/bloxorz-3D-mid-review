@@ -1,0 +1,38 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "C/C++: clang++ build with OpenGL libraries",
+            "command": "/usr/bin/clang++",
+            "args": [
+                "-std=c++17",
+                "-fdiagnostics-color=always",
+                "-Wall",
+                "-g",
+                "${file}",
+                "-o",
+                "${fileDirname}/bloxorz",
+                "-I/opt/homebrew/include",
+                "-I/opt/homebrew/include/GL",
+                "-L/opt/homebrew/lib",
+                "-lglfw",
+                "-lGLEW",
+                "-framework", "OpenGL",
+                "-framework", "Cocoa",
+                "-framework", "IOKit", 
+                "-framework", "CoreVideo",
+                "-Wno-deprecated"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "compiler: /usr/bin/clang++ with GLFW, GLEW, GLM"
+        }
+    ]
+}
