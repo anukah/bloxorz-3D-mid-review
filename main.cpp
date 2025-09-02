@@ -2,32 +2,14 @@
 #include <GLUT/glut.h>
 #include <cmath>
 #include <vector>
-
+#include "levels.h" // Import levels header
 
 const float PI = 3.14159f;
 const float CAMERA_SMOOTH_FACTOR = 0.05f; // How quickly the camera moves
 const int TIMER_INTERVAL_MS = 16;       // 60 FPS
 
 // a vector of vectors from a 2D C-style array.
-std::vector<std::vector<int> > initializePlatformLayout() {
-    const int platformLayoutData[6][10] = {
-        {1,1,1,0,0,0,0,0,0,0},
-        {1,1,1,1,1,1,0,0,0,0},
-        {1,1,1,1,1,1,1,1,1,0},
-        {0,1,1,1,1,1,1,1,1,1},
-        {0,0,0,0,0,1,1,2,1,1},
-        {0,0,0,0,0,0,1,1,1,0}
-    };
-    std::vector<std::vector<int> > layout;
-    for (int i = 0; i < 6; ++i) {
-        layout.push_back(std::vector<int>(platformLayoutData[i], platformLayoutData[i] + 10));
-    }
-    return layout;
-}
-
-
-// Platform Layout - [0 = empty space, 1 = regular tile, 2 = goal]
-const std::vector<std::vector<int> > platformLayout = initializePlatformLayout();
+const std::vector<std::vector<int> > platformLayout = getLevelLayout(1);
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
