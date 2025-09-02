@@ -325,14 +325,10 @@ void drawBlock() {
         case LYING_Z:  glScalef(1.0f, 1.0f, 2.0f); break;
     }
     
-    drawCube(); // This will now draw our textured cube
-    
-    // --- The border drawing code from before is no longer needed with a texture ---
-    // --- You can remove it for a cleaner look, or keep it if you like. ---
-    
+    drawCube();
+
     glPopMatrix();
-    
-    // +++ DISABLE TEXTURING AFTER USE +++
+  
     glDisable(GL_TEXTURE_2D);
     
     glPopMatrix();
