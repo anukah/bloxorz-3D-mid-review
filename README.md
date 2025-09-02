@@ -4,7 +4,7 @@ A 3D implementation of the classic puzzle game **Bloxorz**.
 
 ---
 
-## Platform Conditions
+## Platform Block States
 
 | Code | Description        |
 |------|--------------------|
