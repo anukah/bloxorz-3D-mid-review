@@ -9,7 +9,7 @@ const float CAMERA_SMOOTH_FACTOR = 0.05f; // How quickly the camera moves
 const int TIMER_INTERVAL_MS = 16;       // 60 FPS
 
 // a vector of vectors from a 2D C-style array.
-const std::vector<std::vector<int> > platformLayout = getLevelLayout(1);
+const std::vector<std::vector<int> > platformLayout = getLevelLayout(1); // CHANGE LEVEL
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
@@ -25,6 +25,30 @@ float targetCameraAngleX = 30.0f;
 float targetCameraAngleY = -45.0f;
 float targetCameraDistance = 15.0f;
 
+// Define the block's starting position in grid coordinates
+const int START_ROW = 1;
+const int START_COL = 1; // The second tile in the first row
+
+// Block State
+enum BlockOrientation {
+    STANDING,    // 1x1x2 (standing upright)
+    LYING_X,     // 2x1x1 (lying along X axis)
+    LYING_Z      // 1x2x1 (lying along Z axis)
+};
+
+struct Block {
+    float x, y, z;
+    BlockOrientation orientation;
+};
+
+// Initial block state: Standing at grid position (1,1)
+Block block = {
+    (-PLATFORM_COLS / 2.0f + START_COL + 0.5f) * TILE_SIZE,
+    1.0f,
+    (-PLATFORM_ROWS / 2.0f + START_ROW + 0.5f) * TILE_SIZE,
+    STANDING
+};
+
 // Functions
 void init();
 void update();
@@ -36,6 +60,7 @@ void applyCameraTransform();
 void drawCube();
 void drawCubeBorders();
 void drawPlatform();
+void drawBlock();
 
 // Main
 int main(int argc, char** argv) {
@@ -90,7 +115,7 @@ void display() {
     applyCameraTransform();
 
     drawPlatform(); // Draw Platform
-
+    drawBlock(); // Draw Block
     glutSwapBuffers();
 }
 
@@ -137,7 +162,6 @@ void timer(int value) {
 }
 
 // Camera Helper
-
 void applyCameraTransform() {
 
     if (targetCameraAngleX > 89.0f) targetCameraAngleX = 89.0f;
@@ -169,6 +193,12 @@ void drawCubeBorders() {
 
 // Draw platform
 void drawPlatform() {
+
+    GLfloat plat_specular[] = {0.0f, 0.0f, 0.0f, 1.0f}; // No highlight
+    GLfloat plat_shininess[] = {0.0f};                     // No shininess
+    
+    glMaterialfv(GL_FRONT, GL_SPECULAR, plat_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, plat_shininess);
     
     float offsetX = -PLATFORM_COLS * TILE_SIZE / 2.0f;
     float offsetZ = -PLATFORM_ROWS * TILE_SIZE / 2.0f;
@@ -178,7 +208,7 @@ void drawPlatform() {
             // Only draw if the tile is not an empty space (0)
             if (platformLayout[i][j] != 0) {
                 glPushMatrix();
-                glTranslatef(offsetX + j * TILE_SIZE, -TILE_SIZE / 2.0f, offsetZ + i * TILE_SIZE);
+                glTranslatef(offsetX + (j + 0.5f) * TILE_SIZE, -TILE_SIZE / 2.0f, offsetZ + (i + 0.5f) * TILE_SIZE);
 
                 // Set material properties for the tile
                 if (platformLayout[i][j] == 1) { 
@@ -201,4 +231,50 @@ void drawPlatform() {
             }
         }
     }
+}
+
+void drawBlock() {
+    glPushMatrix();
+    
+    // Move to the block's current position
+    glTranslatef(block.x, block.y, block.z);
+    
+    // Set material properties for a semi-transparent, glass-like block
+    GLfloat mat_ambient[] = {0.4f, 0.4f, 0.4f, 1.0f};
+    GLfloat mat_diffuse[] = {0.8f, 0.8f, 0.8f, 0.8f}; // Light grey, 60% opaque
+    GLfloat mat_specular[] = {1.0f, 1.0f, 1.0f, 1.0f}; // Bright white highlight
+    GLfloat mat_shininess[] = {90.0f};                 // A high value for a sharp, glass-like shine
+    
+    glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
+    
+    // Scale the cube primitive to match the block's orientation
+    glPushMatrix();
+    switch (block.orientation) {
+        case STANDING:
+            glScalef(1.0f, 2.0f, 1.0f);
+            break;
+        case LYING_X:
+            glScalef(2.0f, 1.0f, 1.0f);
+            break;
+        case LYING_Z:
+            glScalef(1.0f, 1.0f, 2.0f);
+            break;
+    }
+    
+    // +++ ADD THESE LINES +++
+    drawCube(); // Draw the solid (glass-like) block first
+    
+    // Now draw the black borders
+    glDisable(GL_LIGHTING); // Disable lighting to get a pure color
+    glColor3f(0.0f, 0.0f, 0.0f); // Set color to black
+    drawCubeBorders(); // Draw the wireframe cube (border)
+    glEnable(GL_LIGHTING);  // Re-enable lighting for subsequent objects
+    // +++ END OF ADDED LINES +++
+
+    glPopMatrix(); // Pop the block's orientation scaling
+    
+    glPopMatrix(); // Pop the block's position translation
 }
