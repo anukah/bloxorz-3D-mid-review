@@ -3,6 +3,9 @@
 #include <cmath>
 #include <vector>
 #include "levels.h" // Import levels header
+#include "SOIL2/SOIL2.h"
+
+GLuint glassTextureID;
 
 const float PI = 3.14159f;
 const float CAMERA_SMOOTH_FACTOR = 0.05f; // How quickly the camera moves
@@ -99,6 +102,18 @@ void init() {
     glLightfv(GL_LIGHT0, GL_POSITION, light_position);
     glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
     glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
+
+    glassTextureID = SOIL_load_OGL_texture(
+        "textures/glass.jpg",
+        SOIL_LOAD_AUTO,
+        SOIL_CREATE_NEW_ID,
+        SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_TEXTURE_REPEATS
+    );
+
+    // Check for errors
+    if (glassTextureID == 0) {
+        printf("SOIL loading error: '%s'\n", SOIL_last_result());
+    }
 }
 
 void update() {
@@ -183,13 +198,61 @@ void applyCameraTransform() {
 
 // Draw cube
 void drawCube() {
-    glutSolidCube(TILE_SIZE);
+    // This replaces glutSolidCube to allow for texturing.
+    // It draws a 1x1x1 cube centered at the origin.
+    glBegin(GL_QUADS);
+
+    // Front Face
+    glNormal3f(0.0, 0.0, 1.0);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5f, -0.5f,  0.5f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f( 0.5f, -0.5f,  0.5f);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f( 0.5f,  0.5f,  0.5f);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5f,  0.5f,  0.5f);
+
+    // Back Face
+    glNormal3f(0.0, 0.0, -1.0);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(-0.5f, -0.5f, -0.5f);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5f,  0.5f, -0.5f);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f( 0.5f,  0.5f, -0.5f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f( 0.5f, -0.5f, -0.5f);
+
+    // Top Face
+    glNormal3f(0.0, 1.0, 0.0);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5f,  0.5f, -0.5f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5f,  0.5f,  0.5f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f( 0.5f,  0.5f,  0.5f);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f( 0.5f,  0.5f, -0.5f);
+
+    // Bottom Face
+    glNormal3f(0.0, -1.0, 0.0);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5f, -0.5f, -0.5f);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f( 0.5f, -0.5f, -0.5f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f( 0.5f, -0.5f,  0.5f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(-0.5f, -0.5f,  0.5f);
+
+    // Right Face
+    glNormal3f(1.0, 0.0, 0.0);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f( 0.5f, -0.5f, -0.5f);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f( 0.5f,  0.5f, -0.5f);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f( 0.5f,  0.5f,  0.5f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f( 0.5f, -0.5f,  0.5f);
+
+    // Left Face
+    glNormal3f(-1.0, 0.0, 0.0);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5f, -0.5f, -0.5f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(-0.5f, -0.5f,  0.5f);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5f,  0.5f,  0.5f);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5f,  0.5f, -0.5f);
+
+    glEnd();
 }
 
 // Draw border of cube
 void drawCubeBorders() {
     glutWireCube(TILE_SIZE + 0.001f);
 }
+
+
 
 // Draw platform
 void drawPlatform() {
@@ -236,45 +299,41 @@ void drawPlatform() {
 void drawBlock() {
     glPushMatrix();
     
-    // Move to the block's current position
     glTranslatef(block.x, block.y, block.z);
     
-    // Set material properties for a semi-transparent, glass-like block
-    GLfloat mat_ambient[] = {0.4f, 0.4f, 0.4f, 1.0f};
-    GLfloat mat_diffuse[] = {0.8f, 0.8f, 0.8f, 0.8f}; // Light grey, 60% opaque
-    GLfloat mat_specular[] = {1.0f, 1.0f, 1.0f, 1.0f}; // Bright white highlight
-    GLfloat mat_shininess[] = {90.0f};                 // A high value for a sharp, glass-like shine
+    // To show the texture correctly, set the base color to white.
+    // The texture color will be multiplied by this material color.
+    GLfloat mat_ambient[] = {0.8f, 0.8f, 0.8f, 1.0f};
+    GLfloat mat_diffuse[] = {1.0f, 1.0f, 1.0f, 0.8f}; // White base color, 80% opaque
+    GLfloat mat_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    GLfloat mat_shininess[] = {90.0f};
     
     glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
     glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
     glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
     
-    // Scale the cube primitive to match the block's orientation
+    // +++ ENABLE AND BIND THE TEXTURE +++
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, glassTextureID);
+    
     glPushMatrix();
     switch (block.orientation) {
-        case STANDING:
-            glScalef(1.0f, 2.0f, 1.0f);
-            break;
-        case LYING_X:
-            glScalef(2.0f, 1.0f, 1.0f);
-            break;
-        case LYING_Z:
-            glScalef(1.0f, 1.0f, 2.0f);
-            break;
+        // ... switch cases are the same ...
+        case STANDING: glScalef(1.0f, 2.0f, 1.0f); break;
+        case LYING_X:  glScalef(2.0f, 1.0f, 1.0f); break;
+        case LYING_Z:  glScalef(1.0f, 1.0f, 2.0f); break;
     }
     
-    // +++ ADD THESE LINES +++
-    drawCube(); // Draw the solid (glass-like) block first
+    drawCube(); // This will now draw our textured cube
     
-    // Now draw the black borders
-    glDisable(GL_LIGHTING); // Disable lighting to get a pure color
-    glColor3f(0.0f, 0.0f, 0.0f); // Set color to black
-    drawCubeBorders(); // Draw the wireframe cube (border)
-    glEnable(GL_LIGHTING);  // Re-enable lighting for subsequent objects
-    // +++ END OF ADDED LINES +++
-
-    glPopMatrix(); // Pop the block's orientation scaling
+    // --- The border drawing code from before is no longer needed with a texture ---
+    // --- You can remove it for a cleaner look, or keep it if you like. ---
     
-    glPopMatrix(); // Pop the block's position translation
+    glPopMatrix();
+    
+    // +++ DISABLE TEXTURING AFTER USE +++
+    glDisable(GL_TEXTURE_2D);
+    
+    glPopMatrix();
 }
