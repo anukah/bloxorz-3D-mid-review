@@ -51,7 +51,9 @@ struct Block {
     bool isAnimating;
     float animationProgress; // 0.0 to 1.0
     Vec3 startPos, targetPos;
+    Vec3 pivotPoint;         // Pivot point for natural rolling
     float startRotZ, targetRotZ; // For rolling left/right
+    float startRotX, targetRotX; // For rolling forward/backward
 };
 
 // Initial block state: Standing at grid position (1,1)
@@ -63,7 +65,9 @@ Block block = {
     false,                                                 // isAnimating
     0.0f,                                                  // animationProgress
     {0,0,0}, {0,0,0},                                      // startPos, targetPos
-    0.0f, 0.0f                                             // startRotZ, targetRotZ
+    {0,0,0},                                               // pivotPoint
+    0.0f, 0.0f,                                            // startRotZ, targetRotZ
+    0.0f, 0.0f                                             // startRotX, targetRotX
 };
 
 // Functions
@@ -214,8 +218,6 @@ void specialKeys(int key, int x, int y) {
     }
 }
 
-
-
 // Timer
 void timer(int value) {
     update();
@@ -225,7 +227,6 @@ void timer(int value) {
 
 // Camera Helper
 void applyCameraTransform() {
-
     if (targetCameraAngleX > 89.0f) targetCameraAngleX = 89.0f;
     if (targetCameraAngleX < 5.0f) targetCameraAngleX = 5.0f;
     if (targetCameraDistance < 5.0f) targetCameraDistance = 5.0f;
@@ -233,19 +234,16 @@ void applyCameraTransform() {
 
     float radX = cameraAngleX * PI / 180.0f;
     float radY = cameraAngleY * PI / 180.0f;
-    
 
     float camX = cameraDistance * sin(radY) * cos(radX);
     float camY = cameraDistance * sin(radX);
     float camZ = cameraDistance * cos(radY) * cos(radX);
-
 
     gluLookAt(camX, camY, camZ, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 }
 
 // Draw cube
 void drawCube() {
-
     glBegin(GL_QUADS);
 
     // Front Face
@@ -298,11 +296,8 @@ void drawCubeBorders() {
     glutWireCube(TILE_SIZE + 0.001f);
 }
 
-
-
 // Draw platform
 void drawPlatform() {
-
     GLfloat plat_specular[] = {0.0f, 0.0f, 0.0f, 1.0f}; // No highlight
     GLfloat plat_shininess[] = {0.0f};                     // No shininess
     
@@ -348,26 +343,38 @@ void drawBlock() {
 
     if (block.isAnimating) {
         float t = block.animationProgress;
-        t = t * t * (3.0f - 2.0f * t);
+        t = t * t * (3.0f - 2.0f * t); // Smooth step interpolation
 
-        // Interpolate position
-        currentX = block.startPos.x + (block.targetPos.x - block.startPos.x) * t;
-        currentY = block.startPos.y + (block.targetPos.y - block.startPos.y) * t;
-        currentZ = block.startPos.z + (block.targetPos.z - block.startPos.z) * t;
-    
         currentRotZ = block.startRotZ + (block.targetRotZ - block.startRotZ) * t;
         
+        // Calculate the rotated position relative to pivot point
+        float dx = block.startPos.x - block.pivotPoint.x;
+        float dy = block.startPos.y - block.pivotPoint.y;
+        
+        // Apply Z-axis rotation around pivot (for left/right rolling)
+        float cosZ = cos(currentRotZ * PI / 180.0f);
+        float sinZ = sin(currentRotZ * PI / 180.0f);
+        
+        float rotatedX = dx * cosZ - dy * sinZ;
+        float rotatedY = dx * sinZ + dy * cosZ;
+        
+        // Final position = pivot + rotated offset
+        currentX = block.pivotPoint.x + rotatedX;
+        currentY = block.pivotPoint.y + rotatedY;
+        currentZ = block.startPos.z; // Z stays the same for X-axis movement
+        
     } else {
-
         currentX = block.x;
         currentY = block.y;
         currentZ = block.z;
-
     }
 
     glPushMatrix();
     
+    // Translate to current position
     glTranslatef(currentX, currentY, currentZ);
+    
+    // Apply Z-axis rotation for visual effect
     glRotatef(currentRotZ, 0.0f, 0.0f, 1.0f);
 
     GLfloat mat_ambient[] = {0.8f, 0.8f, 0.8f, 1.0f};
@@ -406,23 +413,46 @@ void moveBlock(int dx, int dz) {
     block.startPos = {block.x, block.y, block.z};
     block.startRotZ = 0;
 
-    // Calculate Target State
+    // Calculate Target State with proper pivot points
     if (block.orientation == STANDING) {
         // Rolling from standing to lying on its side
+        // Pivot around the bottom edge in direction of movement
+        float pivotOffset = dx > 0 ? 0.5f * TILE_SIZE : -0.5f * TILE_SIZE;
+        
         block.targetPos = {
             block.x + dx * 1.5f * TILE_SIZE,
             0.5f, // Center of a lying block is lower
             block.z
         };
+        
+        // Set pivot point at the bottom edge we're rolling over
+        block.pivotPoint = {
+            block.x + pivotOffset,  // Bottom edge in movement direction
+            0.0f,                   // Ground level
+            block.z
+        };
+        
         block.targetRotZ = -dx * 90.0f; // Roll 90 degrees on Z axis
         block.orientation = LYING_X; // This will be its state *after* the animation
+        
     } else if (block.orientation == LYING_X) {
         // Rolling from lying on its side to standing up
+        // Pivot around the bottom edge in direction of movement
+        float pivotOffset = dx > 0 ? TILE_SIZE : -TILE_SIZE;
+        
         block.targetPos = {
             block.x + dx * 1.5f * TILE_SIZE,
             1.0f, // Center of a standing block is higher
             block.z
         };
+        
+        // Set pivot point at the bottom edge we're rolling over
+        block.pivotPoint = {
+            block.x + pivotOffset,  // Bottom edge in movement direction
+            0.0f,                   // Ground level
+            block.z
+        };
+        
         block.targetRotZ = -dx * 90.0f;
         block.orientation = STANDING;
     }
