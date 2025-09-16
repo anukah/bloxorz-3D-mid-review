@@ -2,7 +2,7 @@
 #include <GLUT/glut.h>
 #include <cmath>
 #include <vector>
-#include "levels.h" // Import levels header
+#include "headers/levels.h"
 #include "SOIL2/SOIL2.h"
 
 struct Vec3 { float x, y, z; };
