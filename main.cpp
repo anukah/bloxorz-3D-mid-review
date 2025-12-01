@@ -212,9 +212,8 @@ void specialKeys(int key, int x, int y) {
     switch (key) {
         case GLUT_KEY_LEFT:  moveBlock(-1, 0); break;
         case GLUT_KEY_RIGHT: moveBlock(1, 0); break;
-        // Todo
-        // case GLUT_KEY_UP:    moveBlock(0, -1); break;
-        // case GLUT_KEY_DOWN:  moveBlock(0, 1); break;
+        case GLUT_KEY_UP:    moveBlock(0, -1); break;
+        case GLUT_KEY_DOWN:  moveBlock(0, 1); break;
     }
 }
 
@@ -338,44 +337,34 @@ void drawPlatform() {
 }
 
 void drawBlock() {
-    float currentX, currentY, currentZ;
-    float currentRotZ = 0.0f;
+    glPushMatrix();
 
     if (block.isAnimating) {
         float t = block.animationProgress;
         t = t * t * (3.0f - 2.0f * t); // Smooth step interpolation
 
-        currentRotZ = block.startRotZ + (block.targetRotZ - block.startRotZ) * t;
+        float currentRotZ = block.startRotZ + (block.targetRotZ - block.startRotZ) * t;
+        float currentRotX = block.startRotX + (block.targetRotX - block.startRotX) * t;
         
-        // Calculate the rotated position relative to pivot point
-        float dx = block.startPos.x - block.pivotPoint.x;
-        float dy = block.startPos.y - block.pivotPoint.y;
+        // Translate to pivot point first
+        glTranslatef(block.pivotPoint.x, block.pivotPoint.y, block.pivotPoint.z);
         
-        // Apply Z-axis rotation around pivot (for left/right rolling)
-        float cosZ = cos(currentRotZ * PI / 180.0f);
-        float sinZ = sin(currentRotZ * PI / 180.0f);
+        // Apply rotation around pivot
+        if (block.targetRotZ != 0) {
+            glRotatef(currentRotZ, 0.0f, 0.0f, 1.0f);
+        }
+        if (block.targetRotX != 0) {
+            glRotatef(currentRotX, 1.0f, 0.0f, 0.0f);
+        }
         
-        float rotatedX = dx * cosZ - dy * sinZ;
-        float rotatedY = dx * sinZ + dy * cosZ;
-        
-        // Final position = pivot + rotated offset
-        currentX = block.pivotPoint.x + rotatedX;
-        currentY = block.pivotPoint.y + rotatedY;
-        currentZ = block.startPos.z; // Z stays the same for X-axis movement
+        // Translate back from pivot to block's original position relative to pivot
+        glTranslatef(block.startPos.x - block.pivotPoint.x, 
+                     block.startPos.y - block.pivotPoint.y, 
+                     block.startPos.z - block.pivotPoint.z);
         
     } else {
-        currentX = block.x;
-        currentY = block.y;
-        currentZ = block.z;
+        glTranslatef(block.x, block.y, block.z);
     }
-
-    glPushMatrix();
-    
-    // Translate to current position
-    glTranslatef(currentX, currentY, currentZ);
-    
-    // Apply Z-axis rotation for visual effect
-    glRotatef(currentRotZ, 0.0f, 0.0f, 1.0f);
 
     GLfloat mat_ambient[] = {0.8f, 0.8f, 0.8f, 1.0f};
     GLfloat mat_diffuse[] = {1.0f, 1.0f, 1.0f, 0.8f}; // White base color, 80% 
@@ -391,7 +380,38 @@ void drawBlock() {
     glBindTexture(GL_TEXTURE_2D, glassTextureID);
     
     glPushMatrix();
-    switch (block.orientation) {
+    
+    // Use the START orientation for scaling during animation
+    BlockOrientation drawOrientation;
+    if (block.isAnimating) {
+        // Determine what orientation the block was BEFORE the move
+        // by checking what it will become and reversing
+        if (block.targetRotZ != 0) {
+            // Moving in X direction
+            if (block.orientation == STANDING) {
+                drawOrientation = LYING_X; // Was lying, becoming standing
+            } else if (block.orientation == LYING_X) {
+                drawOrientation = STANDING; // Was standing, becoming lying
+            } else {
+                drawOrientation = LYING_Z; // Was lying Z, stays lying Z
+            }
+        } else if (block.targetRotX != 0) {
+            // Moving in Z direction
+            if (block.orientation == STANDING) {
+                drawOrientation = LYING_Z;
+            } else if (block.orientation == LYING_Z) {
+                drawOrientation = STANDING;
+            } else {
+                drawOrientation = LYING_X;
+            }
+        } else {
+            drawOrientation = block.orientation;
+        }
+    } else {
+        drawOrientation = block.orientation;
+    }
+    
+    switch (drawOrientation) {
         case STANDING: glScalef(1.0f, 2.0f, 1.0f); break;
         case LYING_X:  glScalef(2.0f, 1.0f, 1.0f); break;
         case LYING_Z:  glScalef(1.0f, 1.0f, 2.0f); break;
@@ -407,54 +427,127 @@ void drawBlock() {
 }
 
 void moveBlock(int dx, int dz) {
-    if (dx == 0) return;
+    if (dx == 0 && dz == 0) return;
 
     // Store starting position and rotation
     block.startPos = {block.x, block.y, block.z};
     block.startRotZ = 0;
+    block.startRotX = 0;
+    block.targetRotZ = 0;
+    block.targetRotX = 0;
 
-    // Calculate Target State with proper pivot points
-    if (block.orientation == STANDING) {
-        // Rolling from standing to lying on its side
-        // Pivot around the bottom edge in direction of movement
-        float pivotOffset = dx > 0 ? 0.5f * TILE_SIZE : -0.5f * TILE_SIZE;
-        
-        block.targetPos = {
-            block.x + dx * 1.5f * TILE_SIZE,
-            0.5f, // Center of a lying block is lower
-            block.z
-        };
-        
-        // Set pivot point at the bottom edge we're rolling over
-        block.pivotPoint = {
-            block.x + pivotOffset,  // Bottom edge in movement direction
-            0.0f,                   // Ground level
-            block.z
-        };
-        
-        block.targetRotZ = -dx * 90.0f; // Roll 90 degrees on Z axis
-        block.orientation = LYING_X; // This will be its state *after* the animation
-        
-    } else if (block.orientation == LYING_X) {
-        // Rolling from lying on its side to standing up
-        // Pivot around the bottom edge in direction of movement
-        float pivotOffset = dx > 0 ? TILE_SIZE : -TILE_SIZE;
-        
-        block.targetPos = {
-            block.x + dx * 1.5f * TILE_SIZE,
-            1.0f, // Center of a standing block is higher
-            block.z
-        };
-        
-        // Set pivot point at the bottom edge we're rolling over
-        block.pivotPoint = {
-            block.x + pivotOffset,  // Bottom edge in movement direction
-            0.0f,                   // Ground level
-            block.z
-        };
-        
-        block.targetRotZ = -dx * 90.0f;
-        block.orientation = STANDING;
+    if (dx != 0) {
+        // Horizontal movement (left/right) - rotates around Z axis
+        if (block.orientation == STANDING) {
+            // Standing (1x2x1) rolling to lying on X axis (2x1x1)
+            // Block center is at height 1.0, bottom edge is at y=0
+            // Pivot is at the bottom edge in the direction of movement
+            block.pivotPoint = {
+                block.x + dx * 0.5f * TILE_SIZE,  // Edge of the 1x1 base
+                0.0f,                              // Ground level
+                block.z
+            };
+            
+            block.targetPos = {
+                block.x + dx * 1.5f * TILE_SIZE,  // Move 1.5 tiles (0.5 + 1.0)
+                0.5f,                              // Lying block center height
+                block.z
+            };
+            
+            block.targetRotZ = -dx * 90.0f;
+            block.orientation = LYING_X;
+            
+        } else if (block.orientation == LYING_X) {
+            // Lying on X axis (2x1x1) - rolling to stand up
+            // Block extends 1 tile in each X direction from center
+            // Pivot is at the far edge in movement direction
+            block.pivotPoint = {
+                block.x + dx * TILE_SIZE,  // Far edge of the 2x1 footprint
+                0.0f,                       // Ground level
+                block.z
+            };
+            
+            block.targetPos = {
+                block.x + dx * 1.5f * TILE_SIZE,  // Move 1.5 tiles
+                1.0f,                              // Standing block center height
+                block.z
+            };
+            
+            block.targetRotZ = -dx * 90.0f;
+            block.orientation = STANDING;
+            
+        } else if (block.orientation == LYING_Z) {
+            // Lying on Z axis (1x1x2) rolling sideways - stays lying on Z
+            block.pivotPoint = {
+                block.x + dx * 0.5f * TILE_SIZE,
+                0.0f,
+                block.z
+            };
+            
+            block.targetPos = {
+                block.x + dx * TILE_SIZE,
+                0.5f,
+                block.z
+            };
+            
+            block.targetRotZ = -dx * 90.0f;
+            // Orientation stays LYING_Z
+        }
+    }
+    
+    if (dz != 0) {
+        // Forward/backward movement - rotates around X axis
+        if (block.orientation == STANDING) {
+            // Standing rolling forward/backward
+            block.pivotPoint = {
+                block.x,
+                0.0f,
+                block.z + dz * 0.5f * TILE_SIZE
+            };
+            
+            block.targetPos = {
+                block.x,
+                0.5f,
+                block.z + dz * 1.5f * TILE_SIZE
+            };
+            
+            block.targetRotX = dz * 90.0f;
+            block.orientation = LYING_Z;
+            
+        } else if (block.orientation == LYING_Z) {
+            // Lying on Z axis rolling forward/backward to standing
+            block.pivotPoint = {
+                block.x,
+                0.0f,
+                block.z + dz * TILE_SIZE
+            };
+            
+            block.targetPos = {
+                block.x,
+                1.0f,
+                block.z + dz * 1.5f * TILE_SIZE
+            };
+            
+            block.targetRotX = dz * 90.0f;
+            block.orientation = STANDING;
+            
+        } else if (block.orientation == LYING_X) {
+            // Lying on X axis rolling forward/backward - stays lying on X
+            block.pivotPoint = {
+                block.x,
+                0.0f,
+                block.z + dz * 0.5f * TILE_SIZE
+            };
+            
+            block.targetPos = {
+                block.x,
+                0.5f,
+                block.z + dz * TILE_SIZE
+            };
+            
+            block.targetRotX = dz * 90.0f;
+            // Orientation stays LYING_X
+        }
     }
 
     block.isAnimating = true;
