@@ -1,5 +1,5 @@
 #define GL_SILENCE_DEPRECATION // Ignore deprecation errors
-#include "SOIL2/SOIL2.h"
+#include "dependencies/include/SOIL2/SOIL2.h"
 #include "headers/levels.h"
 #include <GLUT/glut.h>
 #include <cmath>
@@ -15,14 +15,27 @@ const float PI = 3.14159f;
 const float CAMERA_SMOOTH_FACTOR = 0.05f; // How quickly the camera moves
 const int TIMER_INTERVAL_MS = 16;         // 60 FPS
 const float BLOCK_ANIMATION_SPEED = 0.08f;
+const float FALL_SPEED = 0.15f;
 
 // a vector of vectors from a 2D C-style array.
-const std::vector<std::vector<int>> platformLayout =
+std::vector<std::vector<int>> platformLayout =
     getLevelLayout(3); // CHANGE LEVEL
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
 const float TILE_SIZE = 1.0f;
+
+// Toggle tile state (initially hidden)
+bool toggleGroup1Visible = false; // Bridge at columns 4-5 (row 3)
+bool toggleGroup2Visible = false; // Bridge at columns 10-11 (row 3)
+
+// Toggle tile positions: {row, col} pairs for toggle tiles controlled by each
+// action tile Action tile at (1,2) controls tiles at (3,4) and (3,5) Action
+// tile at (1,8) controls tiles at (3,10) and (3,11)
+const int TOGGLE_GROUP_1_ACTION_ROW = 1, TOGGLE_GROUP_1_ACTION_COL = 2;
+const int TOGGLE_GROUP_2_ACTION_ROW = 1, TOGGLE_GROUP_2_ACTION_COL = 8;
+const int TOGGLE_TILES_1[][2] = {{3, 4}, {3, 5}};
+const int TOGGLE_TILES_2[][2] = {{3, 10}, {3, 11}};
 
 // Camera State
 float cameraAngleX = 30.0f;
@@ -34,9 +47,10 @@ float targetCameraAngleX = 30.0f;
 float targetCameraAngleY = -45.0f;
 float targetCameraDistance = 15.0f;
 
-// Define the block's starting position in grid coordinates
-const int START_ROW = 1;
-const int START_COL = 1; // The second tile in the first row
+// Define the block's starting position in grid coordinates (will be set by
+// findStartPosition)
+int START_ROW = 1;
+int START_COL = 1;
 
 // Block State
 enum BlockOrientation { STANDING, LYING_X, LYING_Z };
@@ -53,9 +67,12 @@ struct Block {
   Vec3 pivotPoint;             // Pivot point for natural rolling
   float startRotZ, targetRotZ; // For rolling left/right
   float startRotX, targetRotX; // For rolling forward/backward
+
+  // Fall state
+  bool isFalling;
+  float fallVelocity;
 };
 
-// Initial block state: Standing at grid position (1,1)
 Block block = {
     (-PLATFORM_COLS / 2.0f + START_COL + 0.5f) * TILE_SIZE, // x
     1.0f,                                                   // y
@@ -69,7 +86,9 @@ Block block = {
     0.0f,
     0.0f, // startRotZ, targetRotZ
     0.0f,
-    0.0f // startRotX, targetRotX
+    0.0f,  // startRotX, targetRotX
+    false, // isFalling
+    0.0f   // fallVelocity
 };
 
 // Functions
@@ -86,6 +105,12 @@ void drawPlatform();
 void drawBlock();
 void specialKeys(int key, int x, int y);
 void moveBlock(int dx, int dz);
+bool checkBlockFall();    // Returns true if block should fall
+void resetBlock();        // Reset block to starting position
+void checkToggleTiles();  // Check and toggle tiles when block lands on action
+                          // tile
+void initToggleTiles();   // Initialize toggle tiles to hidden
+void findStartPosition(); // Find starting position from tile 9 in level data
 
 // Main
 int main(int argc, char **argv) {
@@ -134,6 +159,15 @@ void init() {
   if (glassTextureID == 0) {
     printf("SOIL loading error: '%s'\n", SOIL_last_result());
   }
+
+  // Find starting position from tile 9 in level data
+  findStartPosition();
+
+  // Initialize toggle tiles (hide them initially)
+  initToggleTiles();
+
+  // Reset block to found starting position
+  resetBlock();
 }
 
 void update() {
@@ -142,6 +176,18 @@ void update() {
   cameraAngleY += (targetCameraAngleY - cameraAngleY) * CAMERA_SMOOTH_FACTOR;
   cameraDistance +=
       (targetCameraDistance - cameraDistance) * CAMERA_SMOOTH_FACTOR;
+
+  // Handle falling
+  if (block.isFalling) {
+    block.fallVelocity += 0.02f; // Gravity acceleration
+    block.y -= block.fallVelocity;
+
+    // Reset when fallen far enough
+    if (block.y < -10.0f) {
+      resetBlock();
+    }
+    return;
+  }
 
   if (block.isAnimating) {
     block.animationProgress += BLOCK_ANIMATION_SPEED;
@@ -152,6 +198,15 @@ void update() {
       block.x = block.targetPos.x;
       block.y = block.targetPos.y;
       block.z = block.targetPos.z;
+
+      // Check for toggle tile activation
+      checkToggleTiles();
+
+      // Check if block should fall
+      if (checkBlockFall()) {
+        block.isFalling = true;
+        block.fallVelocity = 0.0f;
+      }
     }
   }
 }
@@ -364,13 +419,22 @@ void drawPlatform() {
                      offsetZ + (i + 0.5f) * TILE_SIZE);
 
         // Set material properties for the tile
-        if (platformLayout[i][j] == 1) {
-          // Regular tile
+        int tileType = platformLayout[i][j];
+        if (tileType == 1) {
+          // Regular tile - dark gray
           GLfloat mat_diffuse[] = {0.2f, 0.2f, 0.25f, 0.7f};
           glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
-        } else {
-          // Target tile
+        } else if (tileType == 2) {
+          // Target tile - cyan
           GLfloat mat_diffuse[] = {0.0f, 0.8f, 0.8f, 0.6f};
+          glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+        } else if (tileType == 4) {
+          // Toggle tile (bridge) - orange
+          GLfloat mat_diffuse[] = {1.0f, 0.6f, 0.2f, 0.7f};
+          glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+        } else if (tileType == 5) {
+          // Toggle action tile - purple
+          GLfloat mat_diffuse[] = {0.7f, 0.3f, 0.9f, 0.7f};
           glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
         }
         drawCube();
@@ -574,4 +638,161 @@ void moveBlock(int dx, int dz) {
 
   block.isAnimating = true;
   block.animationProgress = 0.0f;
+}
+
+// Convert world X coordinate to grid column
+int worldToGridCol(float worldX) {
+  float offsetX = -PLATFORM_COLS * TILE_SIZE / 2.0f;
+  return (int)floor((worldX - offsetX) / TILE_SIZE);
+}
+
+// Convert world Z coordinate to grid row
+int worldToGridRow(float worldZ) {
+  float offsetZ = -PLATFORM_ROWS * TILE_SIZE / 2.0f;
+  return (int)floor((worldZ - offsetZ) / TILE_SIZE);
+}
+
+// Get tile value at grid position (returns 0 if out of bounds)
+int getTileAt(int row, int col) {
+  if (row < 0 || row >= PLATFORM_ROWS || col < 0 || col >= PLATFORM_COLS) {
+    return 0; // Out of bounds = empty
+  }
+  return platformLayout[row][col];
+}
+
+// Check if block should fall
+bool checkBlockFall() {
+  int centerCol = worldToGridCol(block.x);
+  int centerRow = worldToGridRow(block.z);
+
+  switch (block.orientation) {
+  case STANDING:
+    // Standing block occupies only one tile
+    if (getTileAt(centerRow, centerCol) == 0) {
+      return true;
+    }
+    break;
+
+  case LYING_X:
+    // Block extends 1 tile in X direction (left and right from center)
+    // Check both tiles the block occupies
+    {
+      int leftCol = worldToGridCol(block.x - 0.5f * TILE_SIZE);
+      int rightCol = worldToGridCol(block.x + 0.5f * TILE_SIZE);
+      if (getTileAt(centerRow, leftCol) == 0 ||
+          getTileAt(centerRow, rightCol) == 0) {
+        return true;
+      }
+    }
+    break;
+
+  case LYING_Z:
+    // Block extends 1 tile in Z direction (forward and backward from center)
+    {
+      int frontRow = worldToGridRow(block.z - 0.5f * TILE_SIZE);
+      int backRow = worldToGridRow(block.z + 0.5f * TILE_SIZE);
+      if (getTileAt(frontRow, centerCol) == 0 ||
+          getTileAt(backRow, centerCol) == 0) {
+        return true;
+      }
+    }
+    break;
+  }
+
+  return false;
+}
+
+// Reset block to starting position
+void resetBlock() {
+  block.x = (-PLATFORM_COLS / 2.0f + START_COL + 0.5f) * TILE_SIZE;
+  block.y = 1.0f;
+  block.z = (-PLATFORM_ROWS / 2.0f + START_ROW + 0.5f) * TILE_SIZE;
+  block.orientation = STANDING;
+  block.isAnimating = false;
+  block.animationProgress = 0.0f;
+  block.isFalling = false;
+  block.fallVelocity = 0.0f;
+}
+
+// Initialize toggle tiles to be hidden at start
+void initToggleTiles() {
+  // Hide toggle tiles for group 1 (columns 4-5)
+  for (int i = 0; i < 2; i++) {
+    platformLayout[TOGGLE_TILES_1[i][0]][TOGGLE_TILES_1[i][1]] = 0;
+  }
+  // Hide toggle tiles for group 2 (columns 10-11)
+  for (int i = 0; i < 2; i++) {
+    platformLayout[TOGGLE_TILES_2[i][0]][TOGGLE_TILES_2[i][1]] = 0;
+  }
+  toggleGroup1Visible = false;
+  toggleGroup2Visible = false;
+}
+
+// Check if block is on a toggle action tile and toggle the corresponding tiles
+void checkToggleTiles() {
+  int centerCol = worldToGridCol(block.x);
+  int centerRow = worldToGridRow(block.z);
+
+  // Get all tiles the block occupies
+  int occupiedRow1 = centerRow, occupiedCol1 = centerCol;
+  int occupiedRow2 = -1,
+      occupiedCol2 = -1; // -1 means not occupied (standing block)
+
+  if (block.orientation == LYING_X) {
+    occupiedCol1 = worldToGridCol(block.x - 0.5f * TILE_SIZE);
+    occupiedCol2 = worldToGridCol(block.x + 0.5f * TILE_SIZE);
+    occupiedRow2 = centerRow;
+  } else if (block.orientation == LYING_Z) {
+    occupiedRow1 = worldToGridRow(block.z - 0.5f * TILE_SIZE);
+    occupiedRow2 = worldToGridRow(block.z + 0.5f * TILE_SIZE);
+    occupiedCol2 = centerCol;
+  }
+
+  // Check if any occupied tile is a toggle action tile (5)
+  // Check group 1 action tile
+  bool onGroup1Action =
+      (occupiedRow1 == TOGGLE_GROUP_1_ACTION_ROW &&
+       occupiedCol1 == TOGGLE_GROUP_1_ACTION_COL) ||
+      (occupiedRow2 >= 0 && occupiedRow2 == TOGGLE_GROUP_1_ACTION_ROW &&
+       occupiedCol2 == TOGGLE_GROUP_1_ACTION_COL);
+
+  // Check group 2 action tile
+  bool onGroup2Action =
+      (occupiedRow1 == TOGGLE_GROUP_2_ACTION_ROW &&
+       occupiedCol1 == TOGGLE_GROUP_2_ACTION_COL) ||
+      (occupiedRow2 >= 0 && occupiedRow2 == TOGGLE_GROUP_2_ACTION_ROW &&
+       occupiedCol2 == TOGGLE_GROUP_2_ACTION_COL);
+
+  // Toggle group 1
+  if (onGroup1Action) {
+    toggleGroup1Visible = !toggleGroup1Visible;
+    for (int i = 0; i < 2; i++) {
+      platformLayout[TOGGLE_TILES_1[i][0]][TOGGLE_TILES_1[i][1]] =
+          toggleGroup1Visible ? 4 : 0;
+    }
+  }
+
+  // Toggle group 2
+  if (onGroup2Action) {
+    toggleGroup2Visible = !toggleGroup2Visible;
+    for (int i = 0; i < 2; i++) {
+      platformLayout[TOGGLE_TILES_2[i][0]][TOGGLE_TILES_2[i][1]] =
+          toggleGroup2Visible ? 4 : 0;
+    }
+  }
+}
+
+// Find starting position from tile 9 in level data and convert it to normal tile
+void findStartPosition() {
+  for (int i = 0; i < PLATFORM_ROWS; i++) {
+    for (int j = 0; j < PLATFORM_COLS; j++) {
+      if (platformLayout[i][j] == 9) {
+        START_ROW = i;
+        START_COL = j;
+        // Convert starting tile to normal tile
+        platformLayout[i][j] = 1;
+        return;
+      }
+    }
+  }
 }
