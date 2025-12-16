@@ -2,6 +2,7 @@
 #include "dependencies/include/SOIL2/SOIL2.h"
 #include "headers/levels.h"
 #include "headers/menu.h"
+#include "headers/win.h"
 #include <GLUT/glut.h>
 #include <cmath>
 #include <vector>
@@ -19,7 +20,7 @@ const float BLOCK_ANIMATION_SPEED = 0.08f;
 const float FALL_SPEED = 0.15f;
 
 // a vector of vectors from a 2D C-style array.
-std::vector<std::vector<int>> platformLayout = getLevelLayout(3); // CHANGE LEVEL
+std::vector<std::vector<int>> platformLayout = getLevelLayout(2); // CHANGE LEVEL
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
@@ -203,8 +204,11 @@ void update() {
       // Check for toggle tile activation
       checkToggleTiles();
 
-      // Check if block should fall
-      if (checkBlockFall()) {
+      // Check win condition (standing on goal tile)
+      checkWinCondition();
+
+      // Check if block should fall (only if not won)
+      if (!hasWon && checkBlockFall()) {
         block.isFalling = true;
         block.fallVelocity = 0.0f;
       }
@@ -221,8 +225,9 @@ void display() {
     drawMenu();
   } else {
     applyCameraTransform();
-    drawPlatform(); // Draw Platform
-    drawBlock();    // Draw Block
+    drawPlatform();  // Draw Platform
+    drawBlock();     // Draw Block
+    drawWinScreen(); // Draw win overlay if won
   }
   glutSwapBuffers();
 }
@@ -271,6 +276,14 @@ void keyboard(unsigned char key, int x, int y) {
     targetCameraAngleX = 30.0f;
     targetCameraAngleY = 135.0f;
     targetCameraDistance = 15.0f;
+    break;
+  // Restart after winning
+  case ' ':
+    if (hasWon) {
+      resetWinState();
+      resetBlock();
+      initToggleTiles();
+    }
     break;
   // Exit
   case 27:
@@ -722,13 +735,24 @@ void resetBlock() {
 
 // Initialize toggle tiles to be hidden at start
 void initToggleTiles() {
-  // Hide toggle tiles for group 1 (columns 4-5)
+  // Only hide toggle tiles if they exist (type 4) - prevents affecting other levels
+  // Hide toggle tiles for group 1 (columns 4-5) if they exist
   for (int i = 0; i < 2; i++) {
-    platformLayout[TOGGLE_TILES_1[i][0]][TOGGLE_TILES_1[i][1]] = 0;
+    int row = TOGGLE_TILES_1[i][0];
+    int col = TOGGLE_TILES_1[i][1];
+    // Check bounds and if it's actually a toggle tile
+    if (row < PLATFORM_ROWS && col < PLATFORM_COLS && platformLayout[row][col] == 4) {
+      platformLayout[row][col] = 0;
+    }
   }
-  // Hide toggle tiles for group 2 (columns 10-11)
+  // Hide toggle tiles for group 2 (columns 10-11) if they exist
   for (int i = 0; i < 2; i++) {
-    platformLayout[TOGGLE_TILES_2[i][0]][TOGGLE_TILES_2[i][1]] = 0;
+    int row = TOGGLE_TILES_2[i][0];
+    int col = TOGGLE_TILES_2[i][1];
+    // Check bounds and if it's actually a toggle tile
+    if (row < PLATFORM_ROWS && col < PLATFORM_COLS && platformLayout[row][col] == 4) {
+      platformLayout[row][col] = 0;
+    }
   }
   toggleGroup1Visible = false;
   toggleGroup2Visible = false;
@@ -757,11 +781,12 @@ void checkToggleTiles() {
   // Check if any occupied tile is actually a toggle action tile (type 5)
   // First check the actual tile type, not just the position
   bool tile1IsActionTile = (getTileAt(occupiedRow1, occupiedCol1) == 5);
-  bool tile2IsActionTile = (occupiedRow2 >= 0 && getTileAt(occupiedRow2, occupiedCol2) == 5);
-  
+  bool tile2IsActionTile =
+      (occupiedRow2 >= 0 && getTileAt(occupiedRow2, occupiedCol2) == 5);
+
   // Only check toggle groups if we're on an action tile
   if (!tile1IsActionTile && !tile2IsActionTile) {
-    return;  // Not on any action tile, skip toggle logic
+    return; // Not on any action tile, skip toggle logic
   }
 
   // Check group 1 action tile
@@ -797,7 +822,8 @@ void checkToggleTiles() {
   }
 }
 
-// Find starting position from tile 9 in level data and convert it to normal tile
+// Find starting position from tile 9 in level data and convert it to normal
+// tile
 void findStartPosition() {
   for (int i = 0; i < PLATFORM_ROWS; i++) {
     for (int j = 0; j < PLATFORM_COLS; j++) {
@@ -809,5 +835,21 @@ void findStartPosition() {
         return;
       }
     }
+  }
+}
+
+// Check if block is standing on the goal tile (type 2)
+void checkWinCondition() {
+  // Only win if block is standing (1x1 footprint)
+  if (block.orientation != STANDING) {
+    return;
+  }
+  
+  int col = worldToGridCol(block.x);
+  int row = worldToGridRow(block.z);
+  
+  // Check if standing on goal tile (type 2)
+  if (getTileAt(row, col) == 2) {
+    hasWon = true;
   }
 }
