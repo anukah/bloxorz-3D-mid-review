@@ -19,8 +19,7 @@ const float BLOCK_ANIMATION_SPEED = 0.08f;
 const float FALL_SPEED = 0.15f;
 
 // a vector of vectors from a 2D C-style array.
-std::vector<std::vector<int>> platformLayout =
-    getLevelLayout(1); // CHANGE LEVEL
+std::vector<std::vector<int>> platformLayout = getLevelLayout(3); // CHANGE LEVEL
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
@@ -755,19 +754,28 @@ void checkToggleTiles() {
     occupiedCol2 = centerCol;
   }
 
-  // Check if any occupied tile is a toggle action tile (5)
+  // Check if any occupied tile is actually a toggle action tile (type 5)
+  // First check the actual tile type, not just the position
+  bool tile1IsActionTile = (getTileAt(occupiedRow1, occupiedCol1) == 5);
+  bool tile2IsActionTile = (occupiedRow2 >= 0 && getTileAt(occupiedRow2, occupiedCol2) == 5);
+  
+  // Only check toggle groups if we're on an action tile
+  if (!tile1IsActionTile && !tile2IsActionTile) {
+    return;  // Not on any action tile, skip toggle logic
+  }
+
   // Check group 1 action tile
   bool onGroup1Action =
-      (occupiedRow1 == TOGGLE_GROUP_1_ACTION_ROW &&
+      (tile1IsActionTile && occupiedRow1 == TOGGLE_GROUP_1_ACTION_ROW &&
        occupiedCol1 == TOGGLE_GROUP_1_ACTION_COL) ||
-      (occupiedRow2 >= 0 && occupiedRow2 == TOGGLE_GROUP_1_ACTION_ROW &&
+      (tile2IsActionTile && occupiedRow2 == TOGGLE_GROUP_1_ACTION_ROW &&
        occupiedCol2 == TOGGLE_GROUP_1_ACTION_COL);
 
   // Check group 2 action tile
   bool onGroup2Action =
-      (occupiedRow1 == TOGGLE_GROUP_2_ACTION_ROW &&
+      (tile1IsActionTile && occupiedRow1 == TOGGLE_GROUP_2_ACTION_ROW &&
        occupiedCol1 == TOGGLE_GROUP_2_ACTION_COL) ||
-      (occupiedRow2 >= 0 && occupiedRow2 == TOGGLE_GROUP_2_ACTION_ROW &&
+      (tile2IsActionTile && occupiedRow2 == TOGGLE_GROUP_2_ACTION_ROW &&
        occupiedCol2 == TOGGLE_GROUP_2_ACTION_COL);
 
   // Toggle group 1
