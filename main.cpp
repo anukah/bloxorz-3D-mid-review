@@ -13,9 +13,10 @@ const float PI = 3.14159f;
 const float CAMERA_SMOOTH_FACTOR = 0.05f; // How quickly the camera moves
 const int TIMER_INTERVAL_MS = 16;       // 60 FPS
 const float BLOCK_ANIMATION_SPEED = 0.08f;
+const float FALL_SPEED = 0.15f;
 
 // a vector of vectors from a 2D C-style array.
-const std::vector<std::vector<int> > platformLayout = getLevelLayout(1); // CHANGE LEVEL
+const std::vector<std::vector<int> > platformLayout = getLevelLayout(3); // CHANGE LEVEL
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
@@ -54,9 +55,12 @@ struct Block {
     Vec3 pivotPoint;         // Pivot point for natural rolling
     float startRotZ, targetRotZ; // For rolling left/right
     float startRotX, targetRotX; // For rolling forward/backward
+    
+    // Fall state
+    bool isFalling;
+    float fallVelocity;
 };
 
-// Initial block state: Standing at grid position (1,1)
 Block block = {
     (-PLATFORM_COLS / 2.0f + START_COL + 0.5f) * TILE_SIZE, // x
     1.0f,                                                  // y
@@ -67,7 +71,9 @@ Block block = {
     {0,0,0}, {0,0,0},                                      // startPos, targetPos
     {0,0,0},                                               // pivotPoint
     0.0f, 0.0f,                                            // startRotZ, targetRotZ
-    0.0f, 0.0f                                             // startRotX, targetRotX
+    0.0f, 0.0f,                                            // startRotX, targetRotX
+    false,                                                 // isFalling
+    0.0f                                                   // fallVelocity
 };
 
 // Functions
@@ -84,6 +90,8 @@ void drawPlatform();
 void drawBlock();
 void specialKeys(int key, int x, int y);
 void moveBlock(int dx, int dz);
+bool checkBlockFall();  // Returns true if block should fall
+void resetBlock();      // Reset block to starting position
 
 // Main
 int main(int argc, char** argv) {
@@ -143,6 +151,18 @@ void update() {
     cameraAngleY += (targetCameraAngleY - cameraAngleY) * CAMERA_SMOOTH_FACTOR;
     cameraDistance += (targetCameraDistance - cameraDistance) * CAMERA_SMOOTH_FACTOR;
 
+    // Handle falling
+    if (block.isFalling) {
+        block.fallVelocity += 0.02f;  // Gravity acceleration
+        block.y -= block.fallVelocity;
+        
+        // Reset when fallen far enough
+        if (block.y < -10.0f) {
+            resetBlock();
+        }
+        return;
+    }
+
     if (block.isAnimating) {
         block.animationProgress += BLOCK_ANIMATION_SPEED;
         if (block.animationProgress >= 1.0f) {
@@ -152,6 +172,12 @@ void update() {
             block.x = block.targetPos.x;
             block.y = block.targetPos.y;
             block.z = block.targetPos.z;
+            
+            // Check if block should fall
+            if (checkBlockFall()) {
+                block.isFalling = true;
+                block.fallVelocity = 0.0f;
+            }
         }
     }
 }
@@ -552,4 +578,76 @@ void moveBlock(int dx, int dz) {
 
     block.isAnimating = true;
     block.animationProgress = 0.0f;
+}
+
+// Convert world X coordinate to grid column
+int worldToGridCol(float worldX) {
+    float offsetX = -PLATFORM_COLS * TILE_SIZE / 2.0f;
+    return (int)floor((worldX - offsetX) / TILE_SIZE);
+}
+
+// Convert world Z coordinate to grid row
+int worldToGridRow(float worldZ) {
+    float offsetZ = -PLATFORM_ROWS * TILE_SIZE / 2.0f;
+    return (int)floor((worldZ - offsetZ) / TILE_SIZE);
+}
+
+// Get tile value at grid position (returns 0 if out of bounds)
+int getTileAt(int row, int col) {
+    if (row < 0 || row >= PLATFORM_ROWS || col < 0 || col >= PLATFORM_COLS) {
+        return 0;  // Out of bounds = empty
+    }
+    return platformLayout[row][col];
+}
+
+// Check if block should fall
+bool checkBlockFall() {
+    int centerCol = worldToGridCol(block.x);
+    int centerRow = worldToGridRow(block.z);
+    
+    switch (block.orientation) {
+        case STANDING:
+            // Standing block occupies only one tile
+            if (getTileAt(centerRow, centerCol) == 0) {
+                return true;
+            }
+            break;
+            
+        case LYING_X:
+            // Block extends 1 tile in X direction (left and right from center)
+            // Check both tiles the block occupies
+            {
+                int leftCol = worldToGridCol(block.x - 0.5f * TILE_SIZE);
+                int rightCol = worldToGridCol(block.x + 0.5f * TILE_SIZE);
+                if (getTileAt(centerRow, leftCol) == 0 || getTileAt(centerRow, rightCol) == 0) {
+                    return true;
+                }
+            }
+            break;
+            
+        case LYING_Z:
+            // Block extends 1 tile in Z direction (forward and backward from center)
+            {
+                int frontRow = worldToGridRow(block.z - 0.5f * TILE_SIZE);
+                int backRow = worldToGridRow(block.z + 0.5f * TILE_SIZE);
+                if (getTileAt(frontRow, centerCol) == 0 || getTileAt(backRow, centerCol) == 0) {
+                    return true;
+                }
+            }
+            break;
+    }
+    
+    return false;
+}
+
+// Reset block to starting position
+void resetBlock() {
+    block.x = (-PLATFORM_COLS / 2.0f + START_COL + 0.5f) * TILE_SIZE;
+    block.y = 1.0f;
+    block.z = (-PLATFORM_ROWS / 2.0f + START_ROW + 0.5f) * TILE_SIZE;
+    block.orientation = STANDING;
+    block.isAnimating = false;
+    block.animationProgress = 0.0f;
+    block.isFalling = false;
+    block.fallVelocity = 0.0f;
 }

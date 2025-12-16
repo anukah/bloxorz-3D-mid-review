@@ -23,15 +23,32 @@ std::vector<std::vector<int> > getLevelLayout(int levelNumber) {
 
         case 2: {
             // Stage 2
-            const int level2Data[5][5] = {
-                {1,1,1,1,1},
-                {1,0,0,0,1},
-                {1,0,1,1,1},
-                {1,1,1,0,2},
-                {0,0,1,1,1}
+            const int level2Data[7][15] = {
+                {1,1,1,3,3,3,3,3,3,3,1,1,0,0,0},
+                {1,1,1,3,3,3,3,3,3,3,1,1,0,0,0},
+                {1,1,1,1,0,0,0,0,0,1,1,1,0,0,0},
+                {1,1,1,0,0,1,1,1,1,3,3,3,3,3,0},
+                {1,1,1,0,0,1,1,1,1,3,3,3,3,3,0},
+                {0,0,0,0,0,1,2,1,0,0,3,3,1,3,0},
+                {0,0,0,0,0,1,1,1,0,0,3,3,3,3,0}
+            };
+            for (int i = 0; i < 7; ++i) {
+                layout.push_back(std::vector<int>(level2Data[i], level2Data[i] + 15));
+            }
+            break;
+        }
+
+        case 3: {
+            // Stage 3
+            const int level3Data[5][15] = {
+                {1,1,1,1,0,0,1,1,1,1,0,0,1,1,1},
+                {1,1,5,1,0,0,1,1,5,1,0,0,1,2,1},
+                {1,1,1,1,0,0,1,1,1,1,0,0,1,1,1},
+                {1,1,1,1,7,7,1,1,1,1,7,7,1,1,1},
+                {1,1,1,1,0,0,1,1,1,1,0,0,0,0,0}
             };
             for (int i = 0; i < 5; ++i) {
-                layout.push_back(std::vector<int>(level2Data[i], level2Data[i] + 5));
+                layout.push_back(std::vector<int>(level3Data[i], level3Data[i] + 15));
             }
             break;
         }
