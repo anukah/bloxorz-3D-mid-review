@@ -1,6 +1,7 @@
 #define GL_SILENCE_DEPRECATION // Ignore deprecation errors
 #include "dependencies/include/SOIL2/SOIL2.h"
 #include "headers/levels.h"
+#include "headers/menu.h"
 #include <GLUT/glut.h>
 #include <cmath>
 #include <vector>
@@ -19,7 +20,7 @@ const float FALL_SPEED = 0.15f;
 
 // a vector of vectors from a 2D C-style array.
 std::vector<std::vector<int>> platformLayout =
-    getLevelLayout(3); // CHANGE LEVEL
+    getLevelLayout(1); // CHANGE LEVEL
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
@@ -126,6 +127,7 @@ int main(int argc, char **argv) {
   glutReshapeFunc(reshape);
   glutKeyboardFunc(keyboard);
   glutSpecialFunc(specialKeys);
+  glutMouseFunc(mouseClick);
   glutTimerFunc(TIMER_INTERVAL_MS, timer, 0);
 
   glutMainLoop();
@@ -216,10 +218,13 @@ void display() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glLoadIdentity();
 
-  applyCameraTransform();
-
-  drawPlatform(); // Draw Platform
-  drawBlock();    // Draw Block
+  if (currentGameState == MENU) {
+    drawMenu();
+  } else {
+    applyCameraTransform();
+    drawPlatform(); // Draw Platform
+    drawBlock();    // Draw Block
+  }
   glutSwapBuffers();
 }
 
@@ -227,6 +232,8 @@ void display() {
 void reshape(int w, int h) {
   if (h == 0)
     h = 1;
+  windowWidth = w;
+  windowHeight = h;
   glViewport(0, 0, w, h);
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
