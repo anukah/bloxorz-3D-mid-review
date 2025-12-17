@@ -28,7 +28,7 @@ float streakPositions[NUM_STREAKS] = {0.0f, 0.17f, 0.33f, 0.5f, 0.67f, 0.83f};
 float streakSpeeds[NUM_STREAKS] = {0.008f, 0.012f, 0.006f, 0.01f, 0.007f, 0.011f};
 
 // a vector of vectors from a 2D C-style array.
-std::vector<std::vector<int>> platformLayout = getLevelLayout(1); // CHANGE LEVEL
+std::vector<std::vector<int>> platformLayout = getLevelLayout(3); // CHANGE LEVEL
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
@@ -232,6 +232,52 @@ void update() {
   }
 }
 
+// Draw instruction text in top-left corner
+void drawInstructions() {
+  glDisable(GL_LIGHTING);
+  glDisable(GL_DEPTH_TEST);
+  
+  glMatrixMode(GL_PROJECTION);
+  glPushMatrix();
+  glLoadIdentity();
+  gluOrtho2D(0, windowWidth, 0, windowHeight);
+  glMatrixMode(GL_MODELVIEW);
+  glPushMatrix();
+  glLoadIdentity();
+  
+  glColor3f(0.7f, 0.9f, 0.9f);  // Light cyan
+  
+  int x = 15;
+  int y = windowHeight - 25;
+  int lineHeight = 18;
+  
+  const char* instructions[] = {
+    "Controls:",
+    "Arrow Keys - Move Block",
+    "W/S - Zoom In/Out",
+    "A/D - Rotate Camera",
+    "1/2 - Camera Presets",
+    "ESC - Exit"
+  };
+  
+  for (int i = 0; i < 6; i++) {
+    glRasterPos2i(x, y - i * lineHeight);
+    const char* text = instructions[i];
+    while (*text) {
+      glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *text);
+      text++;
+    }
+  }
+  
+  glMatrixMode(GL_PROJECTION);
+  glPopMatrix();
+  glMatrixMode(GL_MODELVIEW);
+  glPopMatrix();
+  
+  glEnable(GL_DEPTH_TEST);
+  glEnable(GL_LIGHTING);
+}
+
 // Display
 void display() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -244,6 +290,7 @@ void display() {
     drawPlatform();      // Draw Platform
     drawLightStreaks();  // Draw animated light streaks
     drawBlock();         // Draw Block
+    drawInstructions();  // Draw keyboard controls
     drawWinScreen();     // Draw win overlay if won
   }
   glutSwapBuffers();
