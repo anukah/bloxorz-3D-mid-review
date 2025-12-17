@@ -19,8 +19,16 @@ const int TIMER_INTERVAL_MS = 16;         // 60 FPS
 const float BLOCK_ANIMATION_SPEED = 0.08f;
 const float FALL_SPEED = 0.15f;
 
+// Animation time for light streaks
+float animationTime = 5.0f;
+
+// Light streak data - position along perimeter (0.0 to 1.0)
+const int NUM_STREAKS = 6;
+float streakPositions[NUM_STREAKS] = {0.0f, 0.17f, 0.33f, 0.5f, 0.67f, 0.83f};
+float streakSpeeds[NUM_STREAKS] = {0.008f, 0.012f, 0.006f, 0.01f, 0.007f, 0.011f};
+
 // a vector of vectors from a 2D C-style array.
-std::vector<std::vector<int>> platformLayout = getLevelLayout(2); // CHANGE LEVEL
+std::vector<std::vector<int>> platformLayout = getLevelLayout(1); // CHANGE LEVEL
 
 const int PLATFORM_ROWS = platformLayout.size();
 const int PLATFORM_COLS = platformLayout[0].size();
@@ -103,13 +111,13 @@ void applyCameraTransform();
 void drawCube();
 void drawCubeBorders();
 void drawPlatform();
+void drawLightStreaks();
 void drawBlock();
 void specialKeys(int key, int x, int y);
 void moveBlock(int dx, int dz);
 bool checkBlockFall();    // Returns true if block should fall
 void resetBlock();        // Reset block to starting position
-void checkToggleTiles();  // Check and toggle tiles when block lands on action
-                          // tile
+void checkToggleTiles();  // Check and toggle tiles when block lands on action tile
 void initToggleTiles();   // Initialize toggle tiles to hidden
 void findStartPosition(); // Find starting position from tile 9 in level data
 
@@ -179,6 +187,14 @@ void update() {
   cameraDistance +=
       (targetCameraDistance - cameraDistance) * CAMERA_SMOOTH_FACTOR;
 
+  // Update light streak positions
+  for (int i = 0; i < NUM_STREAKS; i++) {
+    streakPositions[i] += streakSpeeds[i];
+    if (streakPositions[i] > 1.0f) {
+      streakPositions[i] -= 1.0f;
+    }
+  }
+
   // Handle falling
   if (block.isFalling) {
     block.fallVelocity += 0.02f; // Gravity acceleration
@@ -225,9 +241,10 @@ void display() {
     drawMenu();
   } else {
     applyCameraTransform();
-    drawPlatform();  // Draw Platform
-    drawBlock();     // Draw Block
-    drawWinScreen(); // Draw win overlay if won
+    drawPlatform();      // Draw Platform
+    drawLightStreaks();  // Draw animated light streaks
+    drawBlock();         // Draw Block
+    drawWinScreen();     // Draw win overlay if won
   }
   glutSwapBuffers();
 }
@@ -467,6 +484,99 @@ void drawPlatform() {
       }
     }
   }
+}
+
+// Draw animated white light streaks along tile edges
+void drawLightStreaks() {
+  glDisable(GL_LIGHTING);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  
+  float offsetX = -PLATFORM_COLS * TILE_SIZE / 2.0f;
+  float offsetZ = -PLATFORM_ROWS * TILE_SIZE / 2.0f;
+  float y = 0.02f;  // Slightly above platform top
+  
+  // Collect all tile edges
+  struct Edge {
+    float x1, z1, x2, z2;
+  };
+  
+  // We'll draw streaks on random tile edges based on animation
+  for (int s = 0; s < NUM_STREAKS; s++) {
+    float pos = streakPositions[s];
+    
+    // Pick a random-ish row and column based on streak index and position
+    int tileCount = 0;
+    for (int i = 0; i < PLATFORM_ROWS; ++i) {
+      for (int j = 0; j < PLATFORM_COLS; ++j) {
+        if (platformLayout[i][j] != 0) tileCount++;
+      }
+    }
+    
+    if (tileCount == 0) continue;
+    
+    // Use streak position to select which tile and edge
+    int targetTile = (int)(pos * tileCount * 7) % tileCount;
+    int edgeIndex = (s + (int)(pos * 100)) % 4;  // 0=top, 1=right, 2=bottom, 3=left
+    
+    int count = 0;
+    for (int i = 0; i < PLATFORM_ROWS; ++i) {
+      for (int j = 0; j < PLATFORM_COLS; ++j) {
+        if (platformLayout[i][j] != 0) {
+          if (count == targetTile) {
+            // Found our target tile, draw streak on selected edge
+            float tileX = offsetX + (j + 0.5f) * TILE_SIZE;
+            float tileZ = offsetZ + (i + 0.5f) * TILE_SIZE;
+            float half = TILE_SIZE / 2.0f;
+            
+            float x1, z1, x2, z2;
+            switch (edgeIndex) {
+              case 0: // Top edge (negative Z)
+                x1 = tileX - half; z1 = tileZ - half;
+                x2 = tileX + half; z2 = tileZ - half;
+                break;
+              case 1: // Right edge (positive X)
+                x1 = tileX + half; z1 = tileZ - half;
+                x2 = tileX + half; z2 = tileZ + half;
+                break;
+              case 2: // Bottom edge (positive Z)
+                x1 = tileX + half; z1 = tileZ + half;
+                x2 = tileX - half; z2 = tileZ + half;
+                break;
+              default: // Left edge (negative X)
+                x1 = tileX - half; z1 = tileZ + half;
+                x2 = tileX - half; z2 = tileZ - half;
+                break;
+            }
+            
+            // Draw streak along this edge
+            float edgeProgress = fmod(pos * 3.0f, 1.0f);  // Position along edge
+            float streakLen = 0.4f;  // Streak length as fraction of edge
+            
+            for (float t = 0; t < streakLen; t += 0.05f) {
+              float p = fmod(edgeProgress + t, 1.0f);
+              float px = x1 + (x2 - x1) * p;
+              float pz = z1 + (z2 - z1) * p;
+              
+              float alpha = 1.0f - (t / streakLen);
+              alpha = alpha * alpha;
+              
+              glPointSize(4.0f * alpha + 1.0f);
+              glBegin(GL_POINTS);
+              glColor4f(1.0f, 1.0f, 1.0f, alpha * 0.9f);
+              glVertex3f(px, y, pz);
+              glEnd();
+            }
+            goto next_streak;
+          }
+          count++;
+        }
+      }
+    }
+    next_streak:;
+  }
+  
+  glEnable(GL_LIGHTING);
 }
 
 void drawBlock() {
